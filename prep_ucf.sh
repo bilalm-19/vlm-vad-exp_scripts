@@ -42,8 +42,14 @@ ${PYTHON} path_scanner.py \
 
 
 # ── 2. Resolve the official splits ───────────────────────────────────────────
-# The train split reports ~800 "loose" matches. That's expected - its normals
-# are listed under a folder that doesn't exist.
+# The train split reports ~800 "loose" matches. Expected, and correct.
+# It names its normals under a folder that isn't on this disk:
+#     split file:  Training_Normal_Videos_Anomaly/Normal_Videos001_x264.mp4
+#     on disk:     /data3/.../Training-Normal-Videos-Part-1/Normal_Videos001_x264.mp4
+# Verify with: ls -d "$DATA"/Training_Normal_Videos_Anomaly   -> no such directory
+# So the folder is ignored and the filename is matched instead. Safe, because all
+# 1900 filenames are unique - one filename can only mean one video.
+# The test split names its normals with no folder at all, so it reports no loose.
 echo
 echo "== 2. resolving the official splits =="
 ${PYTHON} resolve_split.py --split "$DATA"/Anomaly_Test.txt  --paths inventory.txt -o splits/test_all.txt
