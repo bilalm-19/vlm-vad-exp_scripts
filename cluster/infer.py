@@ -10,14 +10,18 @@ Writes JSONL - computes no metrics (that is done in eval.py)
     TORCH_DISABLE_NATIVE_JIT=1 CUDA_VISIBLE_DEVICES=0 \
         <env>/bin/python infer.py \
         --model <model dir> \
-        --anomaly <split>/ucf_test_anomaly.txt \
-        --normal  <split>/ucf_test_normal.txt \
+        --anomaly <split>/test_anomaly.txt \
+        --normal  <split>/test_normal.txt \
+        --video-root <dataset dir> \
         -o <out>.jsonl
  
     TORCH_DISABLE_NATIVE_JIT=1  required under torch 2.14, which otherwise needs
                                 python3.12-dev to compile a Triton kernel
     <env>                       must have ms-swift 4.x - not the `qwen` env (3.8)
     --anomaly / --normal        the per-label split files prep_ucf.sh writes
+    --video-root                where the videos live. prep_ucf.sh passed --root
+                                to path_scanner.py, which stripped that prefix
+                                from every path, so it has to go back on here
     -o                          appended to, so a killed run resumes
 
 One JSON object per video, appended as produced:
@@ -37,8 +41,13 @@ Nothing derived is stored - no score, no probabilities. They are functions of
 the two logprobs, and eval.py computes whatever it needs.
 
 A video whose first token did not offer both labels is still written, with a
-"reason" and no logprobs, so the row count always matches the split.
+"reason" (explaining why it wasnt scored) and no logprobs, so the row count always
+matches the split.
  
+The response prefix goes on each request, not on the engine - TransformersEngine
+accepts the keyword and silently drops it, so the model emits <think> first and
+no video scores.
+
 Written against ms-swift 4.5.3 (swift.llm flattened into swift; PtEngine is now
 TransformersEngine).
 """
@@ -216,6 +225,10 @@ def main() -> int:
     ap.add_argument("--model", required=True, help="Model directory")
     ap.add_argument("--anomaly", type=Path, help="Split file of anomaly videos (label 1)")
     ap.add_argument("--normal", type=Path, help="Split file of normal videos (label 0)")
+    ap.add_argument("--video-root", type=Path,
+                help="Prefix for relative paths in the split files - the "
+                        "same --root prep_ucf.sh passed to path_scanner.py. "
+                        "Absolute paths in the split are left alone.")
     ap.add_argument("-o", "--out", type=Path, required=True, help="Output .jsonl")
     ap.add_argument("--prompt", default=USER_PROMPT)
     ap.add_argument("--system", default=SYSTEM_PROMPT)
@@ -272,6 +285,24 @@ def main() -> int:
     if not todo:
         print("ERROR: no videos in the split files", file=sys.stderr)
         return 1
+    if a.video_root:
+        print(f"  root      : {a.video_root}")
+
+
+    # the split files may hold paths relative to --root; resolve to what the
+    # decoder will actually open. an absolute entry overrides the root, which is
+    # how one inventory can span two filesystems.
+    def resolve(p):
+        return str(a.video_root / p) if a.video_root else p
+
+    # fail now rather than after 290 unreadable videos
+    missing = [p for p, _ in todo[:20] if not os.path.exists(resolve(p))]
+    if missing:
+        print(f"ERROR: {len(missing)} of the first {min(20, len(todo))} videos "
+              f"do not exist, e.g.\n         {resolve(missing[0])}\n"
+              f"       the split files hold relative paths - pass --video-root "
+              f"(prep_ucf.sh used --root)", file=sys.stderr)
+        return 1
  
     if a.fresh and a.out.is_file():
         a.out.unlink()
@@ -326,14 +357,17 @@ def main() -> int:
     from swift import InferRequest, RequestConfig, TransformersEngine
  
     print("\n  loading ...", flush=True)
-    engine = TransformersEngine(a.model, max_batch_size=1,
-                                response_prefix=a.response_prefix)
+    engine = TransformersEngine(a.model, max_batch_size=1)
     cfg = RequestConfig(max_tokens=a.max_tokens, temperature=0,
                         logprobs=True, top_logprobs=a.top_logprobs)
  
     a.out.parent.mkdir(parents=True, exist_ok=True)
     rows = []
- 
+    # margin = lp_abnormal - lp_normal, so positive means it leaned abnormal.
+    # true is the ground truth from the split file, pred is the model's own
+    # pick, and 'x' flags the two disagreeing.
+    print(f"\n  {'#':>9} {'margin':>7}  true pred   video")
+     
     with open(a.out, "a", encoding="utf-8") as out:
         for i, (path, label) in enumerate(todo, 1):
             row = {"path": path, "label": label, "sampler": a.sampler,
@@ -342,7 +376,9 @@ def main() -> int:
                 req = InferRequest(
                     messages=[{"role": "system", "content": a.system},
                               {"role": "user", "content": a.prompt}],
-                    videos=[path])
+                    videos=[resolve(path)],
+                    chat_template_kwargs={"response_prefix": a.response_prefix,
+                                          "enable_thinking": False})
                 choice = engine.infer([req], cfg)[0].choices[0]
                 row["text"] = choice.message.content
  
@@ -379,10 +415,13 @@ def main() -> int:
             out.write(json.dumps(row) + "\n")
             out.flush()           # survive a SLURM kill with the work so far
             rows.append(row)
-            shown = ("%+.2f" % (row["lp_abnormal"] - row["lp_normal"])
-                     if "lp_abnormal" in row else "  -- ")
-            print(f"  [{i}/{len(todo)}] {shown} "
-                  f"label={label} {path.split('/')[-1]}", flush=True)
+            margin = ("%+.2f" % (row["lp_abnormal"] - row["lp_normal"])
+                      if "lp_abnormal" in row else "--")
+            pred = row.get("pred")
+            flag = "x" if pred is not None and pred != label else " "
+            print(f"  {f'{i}/{len(todo)}':>9} {margin:>7}  {label:>4} "
+                  f"{'-' if pred is None else pred:>4} {flag} "
+                  f"{path.split('/')[-1]}", flush=True)
  
     calls = getattr(samplers, "CALLS", {}).get("n", 0) if samplers else 0
     summarise(rows, a.sampler, calls)
