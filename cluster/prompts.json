@@ -1,0 +1,12 @@
+{
+  "1": {
+    "name": "One-word baseline",
+    "system": "You are a video anomaly detector.",
+    "prompt": "Classify this surveillance video. Answer with one word: abnormal or normal.",
+    "response_prefix": "Answer:",
+    "answers": {
+      "Abnormal": " abnormal",
+      "Normal": " normal"
+    }
+  }
+}

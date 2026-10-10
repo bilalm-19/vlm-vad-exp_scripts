@@ -13,6 +13,7 @@ Writes JSONL - computes no metrics (that is done in eval.py)
         --anomaly <split>/test_anomaly.txt \
         --normal  <split>/test_normal.txt \
         --video-root <dataset dir> \
+        --prompt-id 1 \
         -o <out>.jsonl
  
     TORCH_DISABLE_NATIVE_JIT=1  required under torch 2.14, which otherwise needs
@@ -22,12 +23,18 @@ Writes JSONL - computes no metrics (that is done in eval.py)
     --video-root                where the videos live. prep_ucf.sh passed --root
                                 to path_scanner.py, which stripped that prefix
                                 from every path, so it has to go back on here
+    --prompt-id                 which record in prompts.json. That record is the
+                                only source of the prompt, system prompt,
+                                response prefix and the two label tokens, so a
+                                run cannot disagree with training
     -o                          appended to, so a killed run resumes
 
 One JSON object per video, appended as produced:
  
     path label                   the video and its true label (1 anomaly, 0 normal)
-    system prompt                the two prompts this row was produced with
+    prompt_id                    which prompts.json record produced this row
+    system prompt                its two prompts, stored in full so the row still
+                                 means something if prompts.json is edited later
     pred                         the label the model chose, null if neither won
     lp_abnormal lp_normal        logprob of each label at the first token
     top_logprobs                 the top candidates there (--top-logprobs), so
@@ -62,17 +69,37 @@ from collections import Counter
 from pathlib import Path
 
 
-SYSTEM_PROMPT = "You are a video anomaly detector."
-USER_PROMPT = ("Classify this surveillance video. "
-               "Answer with one word: abnormal or normal.")
+def load_prompt(prompts_file, prompt_id):
+    """
+    One prompt record from prompts.json - the only place prompt text lives.
 
+    A record carries the prompt, system prompt, response prefix and the two
+    label tokens together. Keeping them in one record is what stops inference
+    and training drifting onto different answer formats.
 
-# Leading spaces are part of the token. Qwen3.5 has ' abnormal' (33418) and
-# ' normal' (4472) as single tokens, but no bare 'abnormal' at all - hence the
-# response prefix below, which supplies the space. See logprob_scoring_plan.md.
-LABEL_ABNORMAL = " abnormal"
-LABEL_NORMAL = " normal"
-RESPONSE_PREFIX = "Answer:"
+    Leading spaces in the labels are significant: Qwen3.5 has ' abnormal' and
+    ' normal' as single tokens but no bare 'abnormal' at all, which is why the
+    prefix exists. See logprob_scoring_plan.md.
+    """
+    if not prompts_file.is_file():
+        raise SystemExit(f"ERROR: prompts file not found - {prompts_file}")
+    records = json.loads(prompts_file.read_text(encoding="utf-8"))
+    if prompt_id not in records:
+        raise SystemExit(f"ERROR: --prompt-id {prompt_id} not in {prompts_file}. "
+                         f"have: {', '.join(sorted(records))}")
+    rec = records[prompt_id]
+    missing = [k for k in ("prompt", "system", "response_prefix", "answers")
+               if k not in rec]
+    if missing:
+        raise SystemExit(f"ERROR: record {prompt_id} has no {', '.join(missing)}. "
+                         f"Logprob scoring needs all four - a record without "
+                         f"them is an old tag-format prompt, readable only by "
+                         f"parsing the output text.")
+    for label in ("Abnormal", "Normal"):
+        if label not in rec["answers"]:
+            raise SystemExit(f"ERROR: record {prompt_id} has no answers.{label}")
+    return rec
+
 
 def read_lines(path):
     """Video paths from a split file: no blanks, no comments."""
@@ -230,19 +257,14 @@ def main() -> int:
                         "same --root prep_ucf.sh passed to path_scanner.py. "
                         "Absolute paths in the split are left alone.")
     ap.add_argument("-o", "--out", type=Path, required=True, help="Output .jsonl")
-    ap.add_argument("--prompt", default=USER_PROMPT)
-    ap.add_argument("--system", default=SYSTEM_PROMPT)
-    ap.add_argument("--prompt-file", type=Path,
-                    help="Read the user prompt from this file instead of --prompt")
-    ap.add_argument("--system-file", type=Path,
-                    help="Read the system prompt from this file instead of --system")
-    ap.add_argument("--label-abnormal", default=LABEL_ABNORMAL,
-                    help="Leading space is significant - it is part of the token")
-    ap.add_argument("--label-normal", default=LABEL_NORMAL)
-    ap.add_argument("--response-prefix", default=RESPONSE_PREFIX,
-                    help="Forced start of the reply. Puts the decision at the "
-                         "first generated token and supplies the leading space "
-                         "that makes both labels single tokens.")
+
+    ap.add_argument("--prompts-file", type=Path,
+                    default=Path(__file__).resolve().parent / "prompts.json",
+                    help="Every prompt lives here, nowhere else")
+    ap.add_argument("--prompt-id", required=True,
+                    help="Which record in --prompts-file. Supplies the prompt, "
+                         "system prompt, response prefix and both label tokens")
+    
     ap.add_argument("--sampler", default="swift",
                     help="swift = native uniform sampling, unpatched (default). "
                          "Anything else is looked up in samplers.py.")
@@ -256,19 +278,13 @@ def main() -> int:
                     help="Overwrite the output instead of resuming it")
     a = ap.parse_args()
  
-    # a prompt file overrides the default above, so a run is reproducible from it
-    for src_path, dest in ((a.prompt_file, "prompt"), (a.system_file, "system")):
-        if src_path is None:
-            continue
-        if not src_path.is_file():
-            print(f"ERROR: prompt file not found - {src_path}", file=sys.stderr)
-            return 1
-        setattr(a, dest, src_path.read_text(encoding="utf-8").strip())
- 
+    rec = load_prompt(a.prompts_file, a.prompt_id)
+
     if not (a.anomaly or a.normal):
         print("ERROR: give --anomaly and/or --normal", file=sys.stderr)
         return 1
-    labels = [a.label_abnormal, a.label_normal]
+    labels = [rec["answers"]["Abnormal"], rec["answers"]["Normal"]]
+
     if labels[0] == labels[1]:
         print("ERROR: the two labels are identical", file=sys.stderr)
         return 1
@@ -285,10 +301,7 @@ def main() -> int:
     if not todo:
         print("ERROR: no videos in the split files", file=sys.stderr)
         return 1
-    if a.video_root:
-        print(f"  root      : {a.video_root}")
-
-
+    
     # the split files may hold paths relative to --root; resolve to what the
     # decoder will actually open. an absolute entry overrides the root, which is
     # how one inventory can span two filesystems.
@@ -314,10 +327,14 @@ def main() -> int:
     print(f"  model     : {a.model}")
     print(f"  videos    : {len(todo)} to do"
           f"{f', {len(done)} already in {a.out}' if done else ''}")
-    print(f"  system    : {a.system!r}")
-    print(f"  prompt    : {a.prompt!r}")
-    print(f"  prefix    : {a.response_prefix!r}")
+    print(f"  prompt    : {a.prompt_id} ({rec['name']})")
+    print(f"  system    : {rec['system']!r}")
+    print(f"  user      : {rec['prompt']!r}")
+    print(f"  prefix    : {rec['response_prefix']!r}")
+    print(f"  labels    : {labels[0]!r} {labels[1]!r}")
     print(f"  frames    : {a.num_frames}   sampler: {a.sampler}")
+    if a.video_root:
+        print(f"  root      : {a.video_root}")
     if not todo:
         print("  nothing to do")
         return 0
@@ -371,14 +388,16 @@ def main() -> int:
     with open(a.out, "a", encoding="utf-8") as out:
         for i, (path, label) in enumerate(todo, 1):
             row = {"path": path, "label": label, "sampler": a.sampler,
-                   "system": a.system, "prompt": a.prompt}
+                "prompt_id": a.prompt_id, "prompt": rec["prompt"],
+                "system": rec["system"]}
             try:
                 req = InferRequest(
-                    messages=[{"role": "system", "content": a.system},
-                              {"role": "user", "content": a.prompt}],
+                    messages=[{"role": "system", "content": rec["system"]},
+                              {"role": "user", "content": rec["prompt"]}],
                     videos=[resolve(path)],
-                    chat_template_kwargs={"response_prefix": a.response_prefix,
+                    chat_template_kwargs={"response_prefix": rec["response_prefix"],
                                           "enable_thinking": False})
+                
                 choice = engine.infer([req], cfg)[0].choices[0]
                 row["text"] = choice.message.content
  

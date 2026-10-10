@@ -173,7 +173,7 @@ def report_validity(rows):
           f"max={stops[-1]:.4f}")
 
     # one run per file, or the metrics below are averaging two configurations
-    for field in ("sampler", "prompt", "system"):
+    for field in ("sampler", "prompt_id", "prompt", "system"):
         seen = {r.get(field) for r in rows if field in r}
         if len(seen) > 1:
             print(f"  WARNING: {len(seen)} different {field} values in one file")
