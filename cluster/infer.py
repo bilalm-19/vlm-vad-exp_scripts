@@ -42,6 +42,7 @@ One JSON object per video, appended as produced:
     top_token                    the token that actually won
     text                         the raw output, for sanity-checking
     sampler                      the sampler name, always, even "swift"
+    sampler_cfg                  the sampler's settings (null for swift)
     frame_idx                    the indices it chose, when it reports them
     
 Nothing derived is stored - no score, no probabilities. They are functions of
@@ -237,9 +238,11 @@ def summarise(rows, sampler_name, sampler_calls):
     print("    (positive = abnormal won; distinct near the total means no ties)")
  
     if sampler_name != "swift":
-        ok = "ok" if sampler_calls == len(rows) else "MISMATCH"
+        read_fail = sum("sampler failed" in r.get("reason", "") for r in rows)
+        expected = len(rows) - read_fail
+        ok = "ok" if sampler_calls == expected else "MISMATCH"
         print(f"\n  sampler {sampler_name!r}: {sampler_calls} reader calls for "
-              f"{len(rows)} videos  {ok}")
+              f"{expected} readable videos ({read_fail} failed to read)  {ok}")
         if sampler_calls == 0:
             print("    0 calls means the override never took - these frames are"
                   " uniform, not sampled")
@@ -359,9 +362,11 @@ def main() -> int:
         try:
             import samplers
             samplers.install(a.sampler)
-        except ImportError:
-            print("ERROR: --sampler needs samplers.py next to this script "
-                  "(use --sampler swift for native uniform sampling)",
+        except ImportError as e:
+            print(f"ERROR: could not import samplers.py - {e}\n"
+                  "       (needs samplers.py next to this script, plus decord, "
+                  "opencv-python-headless and qwen-vl-utils; "
+                  "use --sampler swift for native uniform sampling)",
                   file=sys.stderr)
             return 1
         except KeyError:
@@ -369,7 +374,7 @@ def main() -> int:
             print(f"ERROR: unknown sampler {a.sampler!r}. Known: {known or '-'}",
                   file=sys.stderr)
             return 1
-        print(f"  sampler {a.sampler!r} installed")
+        print(f"  sampler {a.sampler!r} installed: {samplers.CONFIG}")
  
     from swift import InferRequest, RequestConfig, TransformersEngine
  
@@ -388,6 +393,7 @@ def main() -> int:
     with open(a.out, "a", encoding="utf-8") as out:
         for i, (path, label) in enumerate(todo, 1):
             row = {"path": path, "label": label, "sampler": a.sampler,
+                "sampler_cfg": samplers.CONFIG if samplers else None,
                 "prompt_id": a.prompt_id, "prompt": rec["prompt"],
                 "system": rec["system"]}
             try:

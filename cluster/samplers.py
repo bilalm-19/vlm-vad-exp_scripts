@@ -38,7 +38,7 @@ LAST_INDICES = None       # frames the last read used -> row's frame_idx
 _PICK = None              # active sampler, set by install()
 _ORIGINAL = None          # qwen_vl_utils' own reader, for --check
 _ERROR = None             # why the last read failed, for _no_fallback
-
+CONFIG = None             # settings of the installed sampler -> row's sampler_cfg
 
 # ---------------------------------------------------------------- motion ---
 
@@ -172,10 +172,9 @@ def pick_motion(path, start, end, n, fps):
                   MOTION["min_gap_s"], MOTION["z_thresh"])
 
 
-# names --sampler accepts -> the function that picks the frames.
-# install() looks the name up here; add a line to add a sampler.
+# names --sampler accepts -> (function that picks the frames, its settings).
 SAMPLERS = {
-    "motion": pick_motion,
+    "motion": (pick_motion, MOTION),
 }
 
 
@@ -243,14 +242,15 @@ def _no_fallback(ele):
 def install(name):
     """Point qwen_vl_utils' reader at sampler `name`. KeyError if unknown.
     Must run before Qwen loads."""
-    global _PICK, _ORIGINAL
-    pick = SAMPLERS[name]
+    global _PICK, _ORIGINAL, CONFIG
+    pick, cfg = SAMPLERS[name]
     if getattr(vp, "_patch", False):
         raise RuntimeError("swift already patched qwen_vl_utils - install() "
                            "must run before the model loads")
     if _ORIGINAL is None:
         _ORIGINAL = vp._read_video_decord
     _PICK = pick
+    CONFIG = dict(cfg)            # a copy, so infer.py records what actually ran
     # module attribute = what swift wraps when Qwen loads;
     # dict entry       = what fetch_video calls
     vp._read_video_decord = _read_or_record

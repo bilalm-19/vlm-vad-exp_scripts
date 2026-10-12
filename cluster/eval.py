@@ -137,8 +137,8 @@ def report_validity(rows):
 
       top_token not the two labels   -> the response prefix was not holding
       labels + stop not near 1       -> something else competed for the answer
-      >1 prompt/system/sampler       -> two runs were concatenated by accident
-
+      >1 prompt/system/sampler/cfg   -> two runs were concatenated by accident
+      
     The first two also appear in infer.py's per-run summary; the third needs a
     whole file. infer.py's sampler call count cannot be rechecked here - it is a
     runtime counter and never reaches the JSONL.
@@ -172,12 +172,13 @@ def report_validity(rows):
     print(f"    of which stop: median={stops[len(stops) // 2]:.4f}  "
           f"max={stops[-1]:.4f}")
 
-    # one run per file, or the metrics below are averaging two configurations
-    for field in ("sampler", "prompt_id", "prompt", "system"):
-        seen = {r.get(field) for r in rows if field in r}
+    # one run per file, or the metrics below are averaging two configurations.
+    # json.dumps so sampler_cfg (a dict) can go in a set; sort_keys so key
+    # order doesn't count as a difference
+    for field in ("sampler", "sampler_cfg", "prompt_id", "prompt", "system"):
+        seen = {json.dumps(r.get(field), sort_keys=True) for r in rows if field in r}
         if len(seen) > 1:
             print(f"  WARNING: {len(seen)} different {field} values in one file")
-
 
 def report_file(path, rows):
     """Metrics for one run."""
