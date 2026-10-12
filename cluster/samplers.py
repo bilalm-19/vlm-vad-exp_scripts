@@ -1,10 +1,30 @@
 r"""
 samplers.py
 
-Frame samplers for infer.py (--sampler motion); unused for --sampler swift.
-install() swaps in _read: qwen_vl_utils' reader with only the frame picking changed.
+Frame samplers for infer.py. Imported only when --sampler is not "swift".
 
-    python samplers.py video.mp4 --check --save-dir frames/    # test, no Qwen
+    infer.py ... --sampler motion
+
+install() replaces qwen_vl_utils' decord reader with _read: an exact copy except
+for the line that picks frames. A sampler therefore changes only WHICH frames
+Qwen sees, never how many or how they're decoded. --check proves the copy matches.
+
+Three traps this file handles:
+  1. swift re-wraps the readers when it loads Qwen, from the module attributes
+     (vision_process._read_video_*). install() replaces those attributes as
+     well as the VIDEO_READER_BACKENDS entries, or the override is lost.
+  2. fetch_video catches reader errors and re-reads with uniform torchvision.
+     install() replaces torchvision with _no_fallback, so a failed sampler
+     fails the video (infer.py records why) instead of silently going uniform.
+  3. Qwen3.5 pairs frames and timestamps them from frames_indices, so a sampler
+     must return exactly n sorted, unique frame numbers. _check enforces this.
+
+Adding a sampler: write pick_x(path, start, end, n, fps) -> list[int] and add
+it to SAMPLERS. Rows record only the name, so each name = one fixed config.
+
+Test one video without loading Qwen:
+
+    python samplers.py video.mp4 --check --save-dir frames/
 """
 
 import cv2
@@ -26,6 +46,7 @@ MOTION = dict(
     lag=1,                # compare each frame to the one this many back
     smooth=5,             # moving-average window, in frames
     min_gap_s=2.0,        # min seconds between picks (less for short clips)
+    z_thresh=3.0,         # how far above the video's usual level counts as motion
     chunk=32,             # frames decoded at once - speed/memory only
 )
 
@@ -82,62 +103,73 @@ def smooth(scores, window):
     """
     if window <= 1 or len(scores) < window:
         return scores
-    return np.convolve(scores, np.ones(window) / window, mode="same")
+    # repeat the edge scores outward, so the first and last frames are averaged
+    # with copies of themselves rather than with zeros (which would lower them)
+    padded = np.pad(scores, (window // 2, (window - 1) // 2), mode="edge")
+    return np.convolve(padded, np.ones(window) / window, mode="valid")
 
 
 def _uniform(start, end, n):
     """
     n evenly spaced frames across [start, end] - qwen_vl_utils' own formula.
-    Used when motion can't supply n frames, and by --check.
+    select() fills from these and returns them when there's no clear motion;
+    --check uses them to compare against qwen_vl_utils.
     """
     return torch.linspace(start, end, n).round().long().tolist()
 
 
-def select(idx, scores, fps, start, end, n, min_gap_s):
+def select(idx, scores, fps, start, end, n, min_gap_s, z_thresh):
     """
-    The n highest-scoring frames, each at least `gap` seconds apart, topped up
-    with evenly spaced frames if needed. Returns n sorted frame numbers.
+    Evenly spaced frames, plus frames on clear motion events. With no clear
+    motion this is exactly uniform. Returns n sorted frame numbers.
     """
-    # gap = min_gap_s, or half the even spacing if that is smaller:
-    # frames / fps = seconds; / n = even spacing; * 0.5 = half of it.
-    # Short clips can still fit n picks; long videos keep the min_gap_s cap.
+    # gap = min_gap_s, or half the even spacing if smaller, so short clips
+    # still fit n picks
     gap = min(min_gap_s, 0.5 * ((end - start + 1) / fps) / n)
     uniform = _uniform(start, end, n)
 
-    # no motion to rank (window too short to score, or a frozen video)
-    if len(idx) == 0 or scores.max() == 0:
+    if len(idx) == 0:                           # window too short to score
         return uniform
 
-    # highest score first (-scores: argsort only sorts low to high; stable:
-    # tied scores keep time order, so picks are the same every run). Keep a
-    # frame only if it is `gap` from every pick, so picks don't all land on
-    # one burst of motion.
+    # motion = clearly above this video's usual level (every frame scores a
+    # little from noise). Median/MAD = usual level/spread, robust to the event
+    # itself; 0.6745 puts z in standard deviations. Still camera (MAD 0): any
+    # score above the median counts.
+    med = np.median(scores)
+    mad = np.median(np.abs(scores - med))
+    if mad > 0:
+        live = np.flatnonzero(0.6745 * (scores - med) / mad > z_thresh)
+    else:
+        live = np.flatnonzero(scores > med)
+
+    if len(live) == 0:                          # no clear motion
+        return uniform
+
+    # motion frames only, highest first (stable: ties keep time order), each
+    # at least `gap` from every pick so they don't all land on one burst
     picks = []
-    for j in np.argsort(-scores, kind="stable"):
+    for j in live[np.argsort(-scores[live], kind="stable")]:
         if all(abs(idx[j] - p) / fps >= gap for p in picks):
             picks.append(int(idx[j]))
         if len(picks) == n:
             break
 
-    # top up with evenly spaced frames if the gap rule left fewer than n.
-    # Pass 1 (need = gap/2): only those at least half a gap from every pick.
-    # Pass 2 (need = 0): any not yet picked - always reaches n, since the n
-    # even frames are all different and each pick rules out at most one.
-    for need in (gap / 2, 0):
-        for f in uniform:
-            if len(picks) == n:
-                break
-            if f not in picks and all(abs(f - p) / fps >= need for p in picks):
-                picks.append(f)
+    # fill the rest with the even frame farthest from any pick, i.e. the
+    # middle of the biggest empty stretch
+    while len(picks) < n:
+        rest = [f for f in uniform if f not in picks]
+        picks.append(max(rest, key=lambda f: min(abs(f - p) for p in picks)))
 
     return sorted(picks)   # Qwen needs frames in time order
 
 
 def pick_motion(path, start, end, n, fps):
-    """The `motion` sampler: score frames by motion, smooth, pick n spaced apart."""
+    """The `motion` sampler: score frames by motion, smooth, then even frames
+    plus frames on clear motion events."""
     idx, scores = motion_scan(path, start, end)
     scores = smooth(scores, MOTION["smooth"])
-    return select(idx, scores, fps, start, end, n, MOTION["min_gap_s"])
+    return select(idx, scores, fps, start, end, n,
+                  MOTION["min_gap_s"], MOTION["z_thresh"])
 
 
 # names --sampler accepts -> the function that picks the frames.
