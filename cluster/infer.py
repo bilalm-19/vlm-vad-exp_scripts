@@ -44,7 +44,12 @@ One JSON object per video, appended as produced:
     sampler                      the sampler name, always, even "swift"
     sampler_cfg                  the sampler's settings (null for swift)
     frame_idx                    the indices it chose, when it reports them
-    
+    run                          what actually ran, read back after loading:
+                                 model dir and type, weight dtype, template,
+                                 qwen_vl_utils' live video settings, the video
+                                 reader, and the generation config swift built
+                                 - not just what was asked for
+
 Nothing derived is stored - no score, no probabilities. They are functions of
 the two logprobs, and eval.py computes whatever it needs.
 
@@ -165,8 +170,9 @@ def check_single_token(model_dir, labels):
         from transformers import AutoTokenizer
         tk = AutoTokenizer.from_pretrained(model_dir)
     except Exception as e:
-        print(f"  (could not check label tokens: {type(e).__name__} - continuing)")
-        return True               # no tokeniser is not evidence of a bad label
+        # the model's own tokeniser; if it won't load, the model won't either
+        raise SystemExit(f"could not load tokeniser from {model_dir}: "
+                         f"{type(e).__name__}: {e}")
     ok = True
     for label in labels:
         ids = tk.encode(label, add_special_tokens=False)
@@ -191,6 +197,52 @@ def already_done(out_path):
                 except Exception:
                     continue      # a half-written final line from a crash
     return done
+
+def actual_run(engine, cfg, a):
+    """
+    What this run really used, read from the objects that do the work rather
+    than copied from the arguments:
+
+      model_dir / model_type   what swift loaded (model_info)
+      dtype                    the dtype of the loaded weights themselves
+      vision                   qwen_vl_utils' module settings - the values
+                               fetch_video reads on every call
+      video_reader             the backend fetch_video actually picks
+      generation               the GenerationConfig swift builds from cfg -
+                               temperature 0 becomes do_sample=False (greedy)
+    """
+    from qwen_vl_utils import vision_process as vp
+    gen = engine._prepare_generation_config(cfg)      # what generate() is given
+    return {
+        "model": os.path.realpath(a.model),           # what was asked for, resolved
+        "model_dir": engine.model_dir,
+        "model_type": engine.model_info.model_type,
+        "dtype": str(next(engine.model.parameters()).dtype),
+        "template": engine.template_type,
+        # patch_size x SPATIAL_MERGE_SIZE = pixels per token side
+        "patch_size": getattr(getattr(engine.processor, "image_processor", None),
+                              "patch_size", None),
+        "vision": {k: getattr(vp, k) for k in (
+            "FPS", "FPS_MIN_FRAMES", "FPS_MAX_FRAMES", "FRAME_FACTOR",
+            "VIDEO_MIN_TOKEN_NUM", "VIDEO_MAX_TOKEN_NUM", "IMAGE_MAX_TOKEN_NUM",
+            "SPATIAL_MERGE_SIZE") if hasattr(vp, k)},
+        "video_reader": vp.get_video_reader_backend(),
+        "generation": {k: getattr(gen, k, None) for k in (
+            "do_sample", "max_new_tokens", "num_beams", "repetition_penalty")},
+        "top_logprobs": cfg.top_logprobs,
+    }
+
+
+def existing_setup(out_path):
+    """The first row of an existing output, to check a resume matches it."""
+    if out_path.is_file():
+        with open(out_path, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    return json.loads(line)
+                except Exception:
+                    continue
+    return None
 
 
 
@@ -273,7 +325,9 @@ def main() -> int:
                          "Anything else is looked up in samplers.py.")
     ap.add_argument("--num-frames", type=int, default=16)
     ap.add_argument("--image-max-token-num", type=int, default=1024)
-    ap.add_argument("--video-max-token-num", type=int, default=64)
+    ap.add_argument("--video-max-token-num", type=int, default=128,
+                    help="Max tokens per frame. 128 = qwen_vl_utils' minimum, so "
+                         "it is the size actually used; lower is overridden")
     ap.add_argument("--max-tokens", type=int, default=8)
     ap.add_argument("--top-logprobs", type=int, default=20)
     ap.add_argument("--limit", type=int, help="Stop after N videos (smoke test)")
@@ -352,8 +406,9 @@ def main() -> int:
     os.environ["VIDEO_MAX_TOKEN_NUM"] = str(a.video_max_token_num)
     os.environ["FPS_MAX_FRAMES"] = str(a.num_frames)
     # pin the reader so a missing decord cannot fall back to torchvision, which
-    # would sample uniformly and look like our sampler silently failing
-    os.environ.setdefault("FORCE_QWENVL_VIDEO_READER", "decord")
+    # would sample uniformly and look like our sampler silently failing. Set,
+    # not setdefault: a value left in the shell would otherwise win unnoticed
+    os.environ["FORCE_QWENVL_VIDEO_READER"] = "decord"
  
     # patch the frame reader before anything inferences, never lazily - and
     # before the model loads, so a bad name costs seconds not minutes
@@ -375,13 +430,57 @@ def main() -> int:
                   file=sys.stderr)
             return 1
         print(f"  sampler {a.sampler!r} installed: {samplers.CONFIG}")
- 
+
+    # qwen_vl_utils re-reads a video with torchvision if decord fails, without
+    # saying so. samplers.install() blocks that for sampler runs; block it for
+    # swift runs too, so a video decord can't read fails in every run alike and
+    # baseline and sampler runs score the same videos. decord is untouched.
+    if samplers is None:
+        from qwen_vl_utils import vision_process as vp
+
+        def no_fallback(ele):
+            raise RuntimeError(f"decord could not read {ele.get('video')} - "
+                               f"torchvision fallback blocked")
+
+        vp._read_video_torchvision = no_fallback            # what swift wraps
+        vp.VIDEO_READER_BACKENDS["torchvision"] = no_fallback
+
     from swift import InferRequest, RequestConfig, TransformersEngine
  
     print("\n  loading ...", flush=True)
     engine = TransformersEngine(a.model, max_batch_size=1)
     cfg = RequestConfig(max_tokens=a.max_tokens, temperature=0,
                         logprobs=True, top_logprobs=a.top_logprobs)
+
+    run = actual_run(engine, cfg, a)
+    print(f"  loaded    : {run['model_dir']}  ({run['model_type']}, "
+          f"{run['dtype']}, template {run['template']})")
+    print(f"  vision    : {run['vision']}")
+    print(f"  reader    : {run['video_reader']}")
+    v = run["vision"]
+    if v.get("VIDEO_MIN_TOKEN_NUM", 0) > v.get("VIDEO_MAX_TOKEN_NUM", 1 << 30):
+        # qwen_vl_utils raises max to 1.05 x min, so frames get ~min tokens
+        print(f"  WARNING: VIDEO_MIN_TOKEN_NUM {v['VIDEO_MIN_TOKEN_NUM']} > "
+              f"VIDEO_MAX_TOKEN_NUM {v['VIDEO_MAX_TOKEN_NUM']} - qwen_vl_utils "
+              f"uses the min, so frames get ~{v['VIDEO_MIN_TOKEN_NUM']} tokens, "
+              f"not {v['VIDEO_MAX_TOKEN_NUM']}", file=sys.stderr)
+    if run["video_reader"] != "decord":
+        print(f"  WARNING: video reader is {run['video_reader']!r}, not decord",
+              file=sys.stderr)
+
+    # a resume must continue the same run, or the file mixes two setups
+    prev = existing_setup(a.out)
+    if prev is not None:
+        clash = [k for k, now in (("run", run), ("sampler", a.sampler),
+                                  ("sampler_cfg", samplers.CONFIG if samplers else None),
+                                  ("prompt_id", a.prompt_id))
+                 if k in prev and json.dumps(prev[k], sort_keys=True)
+                                  != json.dumps(now, sort_keys=True)]
+        if clash:
+            print(f"ERROR: {a.out} was written with a different "
+                  f"{', '.join(clash)} - use a new -o, or --fresh to overwrite",
+                  file=sys.stderr)
+            return 1
  
     a.out.parent.mkdir(parents=True, exist_ok=True)
     rows = []
@@ -394,6 +493,7 @@ def main() -> int:
         for i, (path, label) in enumerate(todo, 1):
             row = {"path": path, "label": label, "sampler": a.sampler,
                 "sampler_cfg": samplers.CONFIG if samplers else None,
+                "run": run,
                 "prompt_id": a.prompt_id, "prompt": rec["prompt"],
                 "system": rec["system"]}
             try:

@@ -19,8 +19,9 @@ P(abnormal) on its own, and the word the model actually said as 1 or 0.
 See SCORES.
 
 Per file: AUROC under each read-out with its tied-pair count, the confusion
-matrix at pred's operating point, the log-odds spread, and infer.py's validity
-checks run over the whole file rather than one run.
+matrix at pred's operating point, accuracy per UCF category, the log-odds
+spread, and infer.py's validity checks run over the whole file rather than
+one run.
 """
 
 
@@ -137,8 +138,8 @@ def report_validity(rows):
 
       top_token not the two labels   -> the response prefix was not holding
       labels + stop not near 1       -> something else competed for the answer
-      >1 prompt/system/sampler/cfg   -> two runs were concatenated by accident
-      
+      >1 prompt/system/sampler/cfg/run -> two runs were concatenated by accident
+
     The first two also appear in infer.py's per-run summary; the third needs a
     whole file. infer.py's sampler call count cannot be rechecked here - it is a
     runtime counter and never reaches the JSONL.
@@ -150,6 +151,13 @@ def report_validity(rows):
         print(f"      {n:4}  {reason}")
     if not scored:
         return
+
+    # what actually ran, read back by infer.py after loading
+    run = next((r["run"] for r in rows if "run" in r), None)
+    if run:
+        print(f"  model: {run.get('model_dir')}  ({run.get('model_type')}, "
+              f"{run.get('dtype')})  reader {run.get('video_reader')}")
+        print(f"  vision: {run.get('vision')}")
 
     tokens = Counter(r.get("top_token") for r in scored)
     chose = "  ".join(f"{tok!r} {n}" for tok, n in tokens.most_common(4))
@@ -175,10 +183,32 @@ def report_validity(rows):
     # one run per file, or the metrics below are averaging two configurations.
     # json.dumps so sampler_cfg (a dict) can go in a set; sort_keys so key
     # order doesn't count as a difference
-    for field in ("sampler", "sampler_cfg", "prompt_id", "prompt", "system"):
+    for field in ("run", "sampler", "sampler_cfg", "prompt_id", "prompt", "system"):
         seen = {json.dumps(r.get(field), sort_keys=True) for r in rows if field in r}
         if len(seen) > 1:
             print(f"  WARNING: {len(seen)} different {field} values in one file")
+
+def report_categories(scored):
+    """
+    Accuracy per UCF category at the model's own choice (pred). The category
+    is the folder each video sits in, e.g. .../Shoplifting/Shoplifting001_x264.mp4
+    -> Shoplifting; normals come out as Testing_Normal_Videos_Anomaly.
+    """
+    per = defaultdict(lambda: [0, 0])          # category -> [correct, total]
+    for r in scored:
+        if r.get("pred") is None:              # a third token won - no verdict
+            continue
+        cat = Path(r["path"]).parent.name
+        per[cat][0] += r["pred"] == r["label"]
+        per[cat][1] += 1
+    if not per:
+        return
+    print("\n  per category (pred):")
+    width = max(len(c) for c in per)
+    for cat in sorted(per):
+        right, n = per[cat]
+        print(f"    {cat:{width}} : {right:3}/{n:3} ({right / n:.4f})")
+
 
 def report_file(path, rows):
     """Metrics for one run."""
@@ -219,6 +249,7 @@ def report_file(path, rows):
         # pair counting with ties at 0.5 reduces to (TPR+TNR)/2
         print(f"    balanced accuracy {(tpr + tnr) / 2:.4f}  "
               f"= AUROC pred above, as a binary score must")
+        report_categories(scored)
 
     # the underlying log-odds. same ordering as share(), so repeated log-odds
     # are also tied share() scores - which is what drags AUROC toward pred.

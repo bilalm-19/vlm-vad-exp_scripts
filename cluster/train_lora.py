@@ -29,7 +29,7 @@ The prefix must be in the text: swift applies response_prefix at inference only
 (template/base.py:1443), so training without it optimises a different conditional
 than infer.py reads. verify_tokens() checks this first.
 
-No validation split - one epoch means one checkpoint, nothing to select between
+No validation split - one epoch means one checkpoint, nothing to select between.
 """
 
 from __future__ import annotations
@@ -88,7 +88,7 @@ def load_videos(lists: dict[str, str], root: Path | None) -> list[tuple[str, Pat
               + (f"   ({missing} listed but not on disk)" if missing else ""))
         if missing:
             print(f"  WARNING: {missing} paths under {label} don't exist - stale list? "
-                  f"Re-run scan_paths.py and resolve_split.py.", file=sys.stderr)
+                  f"Re-run path_scanner.py and resolve_split.py.", file=sys.stderr)
     return videos
 
 
@@ -139,8 +139,9 @@ def verify_tokens(model_dir, prefix, answers) -> bool:
         from transformers import AutoTokenizer
         tk = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
     except Exception as e:
-        print(f"  (could not load tokeniser: {type(e).__name__} - skipping check)")
-        return True              # no tokeniser is not evidence of a bad label
+        # the model's own tokeniser; if it won't load, training won't either
+        raise SystemExit(f"could not load tokeniser from {model_dir}: "
+                         f"{type(e).__name__}: {e}")
     pre = tk.encode(prefix, add_special_tokens=False)
     print(f"  prefix {prefix!r} -> {pre}")
     ok = True
@@ -250,6 +251,9 @@ def build_slurm(a, run_name: str, run_dir: Path, log_path: Path,
               f"  --per_device_train_batch_size  {a.batch_size}",
               f"  --gradient_accumulation_steps  {a.grad_accum}",
               f"  --max_length         {a.max_length}",
+              # swift otherwise puts an empty <think></think> block before every
+              # answer in training; infer.py's prompt has none, so the two would differ
+              "  --add_non_thinking_prefix  false",
               f"  --torch_dtype        {a.torch_dtype}",
               "  --gradient_checkpointing  true",
               "  --save_strategy      epoch",
@@ -388,7 +392,7 @@ def build_parser() -> argparse.ArgumentParser:
     g = p.add_argument_group("video (must match inference)")
     g.add_argument("--num-frames", type=int, default=16)
     g.add_argument("--image-max-token-num", type=int, default=1024)
-    g.add_argument("--video-max-token-num", type=int, default=64)
+    g.add_argument("--video-max-token-num", type=int, default=128)
 
     g = p.add_argument_group("cluster")
     g.add_argument("--num-gpus", type=int, default=2)
