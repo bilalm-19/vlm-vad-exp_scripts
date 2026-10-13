@@ -454,8 +454,8 @@ def main() -> int:
 
     run_dir = a.adapter_base / run_name
     run_dir.mkdir(parents=True, exist_ok=True)
-    a.log_dir.mkdir(parents=True, exist_ok=True)
-    log_path = a.log_dir.resolve() / f"{run_name}.log"
+    # in the run folder, so swift's actual video settings stay with the adapter
+    log_path = run_dir.resolve() / "train.log"
 
     train_file = run_dir / "train_data.jsonl"
     n = write_train_jsonl(videos, train_file, system_prompt, prompt_text,
