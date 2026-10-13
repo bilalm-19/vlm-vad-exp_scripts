@@ -22,7 +22,8 @@ One run, one directory, so a checkpoint is never separated from what produced it
         train_data.jsonl   the rows trained on, assistant turn included
         run.json           every setting, including the prompt record
         slurm.sh           the exact script submitted
-        checkpoint-*/      the adapter
+        train.log          the job's output, incl. swift's actual video settings
+        checkpoint-*/      the adapter, with swift's args.json (settings it used)
 
 The assistant turn is the response prefix plus the label, e.g. "Answer: abnormal".
 The prefix must be in the text: swift applies response_prefix at inference only
@@ -355,7 +356,6 @@ def build_parser() -> argparse.ArgumentParser:
                         "5.2-5.16. qwen3_5 support landed in transformers 5.2, "
                         "so older envs cannot load the model at all")
     g.add_argument("--adapter-base", type=Path, default=Path("/data3/bilal/lora_outputs"))
-    g.add_argument("--log-dir", type=Path, default=Path("logs"))
     g.add_argument("--tag", default="", help="Extra text in the run name")
 
     g = p.add_argument_group("LoRA")
