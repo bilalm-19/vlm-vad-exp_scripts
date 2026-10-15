@@ -8,5 +8,25 @@
       "Abnormal": " abnormal",
       "Normal": " normal"
     }
+  },
+  "2": {
+    "name": "General questions (VERA)",
+    "system": "You are a video anomaly detector.",
+    "prompt": "Classify this surveillance video using these questions:\n1. Are there any people in the video who are not in their typical positions or engaging in activities that are not consistent with their usual behavior?\n2. Are there any vehicles in the video that are not in their typical positions or being used in a way that is not consistent with their usual function?\n3. Are there any objects in the video that are not in their typical positions or being used in a way that is not consistent with their usual function?\n4. Is there any visible damage or unusual movement in the video that indicates an anomaly?\nAnswer with one word: abnormal or normal.",
+    "response_prefix": "Answer:",
+    "answers": {
+      "Abnormal": " abnormal",
+      "Normal": " normal"
+    }
+  },
+  "3": {
+    "name": "Specific questions (ASK-HINT)",
+    "system": "You are a video anomaly detector.",
+    "prompt": "Classify this surveillance video using these questions:\nViolence or harm to people:\n1. Do you see people confronting, attacking, or restraining each other?\n2. Is there evidence of weapons, force, or law enforcement?\nCrimes against property:\n3. Do you see someone unlawfully taking, concealing, or destroying property?\n4. Do you see forced entry, vandalism, or deliberate fire?\nPublic safety incidents:\n5. Do you see a sudden blast, smoke, or debris?\n6. Do you see vehicles colliding or losing control?\nAnswer with one word: abnormal or normal.",
+    "response_prefix": "Answer:",
+    "answers": {
+      "Abnormal": " abnormal",
+      "Normal": " normal"
+    }
   }
 }
