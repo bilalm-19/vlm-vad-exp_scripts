@@ -18,15 +18,18 @@ Three traps this file handles:
      fails the video (infer.py records why) instead of silently going uniform.
   3. Qwen3.5 pairs frames and timestamps them from frames_indices, so a sampler
      must return exactly n sorted, unique frame numbers. _check enforces this.
+  4. swift passes the reader an in-memory copy of the file (BytesIO), not a
+     path, and decord consumes it. _read gives each open its own copy.
 
-Adding a sampler: write pick_x(path, start, end, n, fps) -> list[int] and add
-it to SAMPLERS. Rows record only the name, so each name = one fixed config.
-
+Adding a sampler: write pick_x(src, start, end, n, fps) -> list[int] and add
+it to SAMPLERS. src is a path or a BytesIO - open it with decord.VideoReader,
+once. Rows record only the name, so each name = one fixed config.
 Test one video without loading Qwen:
 
     python samplers.py video.mp4 --check --save-dir frames/
 """
 
+import io
 import cv2
 import decord
 import numpy as np
@@ -197,14 +200,23 @@ def _read(ele):
     global LAST_INDICES
     LAST_INDICES = None
 
-    video_path = ele["video"]
-    vr = decord.VideoReader(video_path)
+    # swift hands the reader an in-memory copy of the file (a BytesIO), not a
+    # path. decord reads that stream to the end, so the motion scan and the
+    # frame read each need their own copy - reusing one gets "0 bytes".
+    src = ele["video"]
+    if hasattr(src, "read"):
+        src.seek(0)
+        data = src.read()
+        fresh = lambda: io.BytesIO(data)
+    else:
+        fresh = lambda: src
+    vr = decord.VideoReader(fresh())
     total_frames, video_fps = len(vr), vr.get_avg_fps()
     start_frame, end_frame, total_frames = vp.calculate_video_frame_range(
         ele, total_frames, video_fps)
     nframes = vp.smart_nframes(ele, total_frames=total_frames, video_fps=video_fps)
 
-    idx = _PICK(video_path, start_frame, end_frame, nframes, video_fps)
+    idx = _PICK(fresh(), start_frame, end_frame, nframes, video_fps)
     _check(idx, nframes, start_frame, end_frame)
 
     video = vr.get_batch(idx).asnumpy()
