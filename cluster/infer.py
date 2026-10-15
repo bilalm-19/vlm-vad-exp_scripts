@@ -28,6 +28,10 @@ Writes JSONL - computes no metrics (that is done in eval.py)
                                 response prefix and the two label tokens, so a
                                 run cannot disagree with training
     -o                          appended to, so a killed run resumes
+    --adapter                   a LoRA checkpoint from train_lora.py
+                                (checkpoint-*/), loaded on top of --model.
+                                Its run.json must name the same model and
+                                prompt id, or the run stops
 
 One JSON object per video, appended as produced:
  
@@ -47,7 +51,8 @@ One JSON object per video, appended as produced:
     run                          what actually ran, read back after loading:
                                  model dir and type, weight dtype, template,
                                  qwen_vl_utils' live video settings, the video
-                                 reader, and the generation config swift built
+                                 reader, the generation config swift built,
+                                 and the LoRA adapter if one was loaded
                                  - not just what was asked for
 
 Nothing derived is stored - no score, no probabilities. They are functions of
@@ -198,7 +203,7 @@ def already_done(out_path):
                     continue      # a half-written final line from a crash
     return done
 
-def actual_run(engine, cfg, a):
+def actual_run(engine, cfg, a, adapter):
     """
     What this run really used, read from the objects that do the work rather
     than copied from the arguments:
@@ -210,6 +215,8 @@ def actual_run(engine, cfg, a):
       video_reader             the backend fetch_video actually picks
       generation               the GenerationConfig swift builds from cfg -
                                temperature 0 becomes do_sample=False (greedy)
+      adapter                  the LoRA checkpoint, and whether the loaded
+                               model actually carries it (peft_config)
     """
     from qwen_vl_utils import vision_process as vp
     gen = engine._prepare_generation_config(cfg)      # what generate() is given
@@ -230,8 +237,43 @@ def actual_run(engine, cfg, a):
         "generation": {k: getattr(gen, k, None) for k in (
             "do_sample", "max_new_tokens", "num_beams", "repetition_penalty")},
         "top_logprobs": cfg.top_logprobs,
+        "adapter": None if adapter is None else {
+            **adapter, "loaded": hasattr(engine.model, "peft_config")},
     }
 
+
+def check_adapter(adapter, model, prompt_id):
+    """
+    The LoRA checkpoint to load, checked against the run that trained it.
+
+    train_lora.py writes run.json into the run folder, a level or two above the
+    checkpoint. An adapter trained on another model or another prompt would
+    still load and score - just meaninglessly - so a mismatch stops the run.
+    Returns what is recorded in each row: the path and the LoRA settings read
+    from the adapter itself.
+    """
+    path = Path(adapter).expanduser().resolve()
+    cfg_file = path / "adapter_config.json"
+    if not cfg_file.is_file():
+        raise SystemExit(f"--adapter {path}: no adapter_config.json - pass the "
+                         f"checkpoint-*/ folder, not the run folder")
+    lora = json.loads(cfg_file.read_text(encoding="utf-8"))
+
+    run_json = next((d / "run.json" for d in (path.parent, path.parent.parent)
+                     if (d / "run.json").is_file()), None)
+    if run_json is None:
+        raise SystemExit(f"--adapter {path}: no run.json above it, so the model and "
+                         f"prompt it was trained with cannot be checked")
+    trained = json.loads(run_json.read_text(encoding="utf-8"))
+    t_model = trained["settings"]["model"]
+    t_prompt = str(trained["prompt"]["prompt_id"])
+    if os.path.realpath(t_model) != os.path.realpath(model):
+        raise SystemExit(f"--adapter was trained on {t_model}, not {model}")
+    if t_prompt != str(prompt_id):
+        raise SystemExit(f"--adapter was trained on prompt {t_prompt}, "
+                         f"not --prompt-id {prompt_id}")
+    return {"path": str(path), "trained_run": trained["run_name"],
+            "r": lora.get("r"), "lora_alpha": lora.get("lora_alpha")}
 
 def existing_setup(out_path):
     """The first row of an existing output, to check a resume matches it."""
@@ -305,6 +347,9 @@ def main() -> int:
         prog="infer.py",
         description="Record the logprobs a VLM puts on each label, per video.")
     ap.add_argument("--model", required=True, help="Model directory")
+    ap.add_argument("--adapter",
+                    help="LoRA checkpoint folder (checkpoint-*/) from train_lora.py, "
+                         "loaded on top of --model")
     ap.add_argument("--anomaly", type=Path, help="Split file of anomaly videos (label 1)")
     ap.add_argument("--normal", type=Path, help="Split file of normal videos (label 0)")
     ap.add_argument("--video-root", type=Path,
@@ -336,7 +381,7 @@ def main() -> int:
     a = ap.parse_args()
  
     rec = load_prompt(a.prompts_file, a.prompt_id)
-
+    adapter = check_adapter(a.adapter, a.model, a.prompt_id) if a.adapter else None
     if not (a.anomaly or a.normal):
         print("ERROR: give --anomaly and/or --normal", file=sys.stderr)
         return 1
@@ -382,8 +427,11 @@ def main() -> int:
         todo = todo[:a.limit]
  
     print(f"  model     : {a.model}")
+    if adapter:
+        print(f"  adapter   : {adapter['path']}  (r {adapter['r']}, "
+              f"alpha {adapter['lora_alpha']})")
     print(f"  videos    : {len(todo)} to do"
-          f"{f', {len(done)} already in {a.out}' if done else ''}")
+        f"{f', {len(done)} already in {a.out}' if done else ''}")
     print(f"  prompt    : {a.prompt_id} ({rec['name']})")
     print(f"  system    : {rec['system']!r}")
     print(f"  user      : {rec['prompt']!r}")
@@ -448,11 +496,16 @@ def main() -> int:
     from swift import InferRequest, RequestConfig, TransformersEngine
  
     print("\n  loading ...", flush=True)
-    engine = TransformersEngine(a.model, max_batch_size=1)
+    engine = TransformersEngine(a.model, max_batch_size=1,
+                                adapters=[adapter["path"]] if adapter else None)
     cfg = RequestConfig(max_tokens=a.max_tokens, temperature=0,
                         logprobs=True, top_logprobs=a.top_logprobs)
 
-    run = actual_run(engine, cfg, a)
+    run = actual_run(engine, cfg, a, adapter)
+    if adapter and not run["adapter"]["loaded"]:
+        print("ERROR: --adapter was given but the loaded model carries no LoRA",
+              file=sys.stderr)
+        return 1
     print(f"  loaded    : {run['model_dir']}  ({run['model_type']}, "
           f"{run['dtype']}, template {run['template']})")
     print(f"  vision    : {run['vision']}")
@@ -478,7 +531,8 @@ def main() -> int:
                                   != json.dumps(now, sort_keys=True)]
         if clash:
             print(f"ERROR: {a.out} was written with a different "
-                  f"{', '.join(clash)} - use a new -o, or --fresh to overwrite",
+                  f"{', '.join(clash)} - use a new -o (run_infer.sh: NEW=1), "
+                  f"or --fresh to overwrite it",
                   file=sys.stderr)
             return 1
  
