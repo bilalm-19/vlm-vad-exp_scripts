@@ -203,7 +203,7 @@ def resolve_batch(a) -> str:
     if a.grad_accum is not None:
         a.effective_batch = per_step * a.grad_accum
         print("  NOTE: --grad-accum was given, so effective batch changes with "
-              "--num-gpus and runs on different GPU counts aren't comparable.",
+              "the number of --gpus and runs on different GPU counts aren't comparable.",
               file=sys.stderr)
         return describe_batch(a)
 
@@ -228,9 +228,8 @@ def describe_batch(a) -> str:
 
 def build_slurm(a, run_name: str, run_dir: Path, log_path: Path,
                 train_file: Path) -> str:
-    gpus = ",".join(str(i) for i in range(a.gpu_start, a.gpu_start + a.num_gpus))
+    gpus = a.gpus                       # as given, e.g. "3,6"
     multi = a.num_gpus > 1
-
     swift = [f"{a.swift_bin} sft",
              f"  --model              {a.model}",
              "  --tuner_type         lora",
@@ -303,6 +302,10 @@ echo "  Epochs {a.epochs} | LR {a.lr} | rank {a.rank} | alpha {a.alpha}"
 echo "  Data:    {train_file}"
 echo "========================================"
 
+# Read before the export, or it just echoes the value below. If SLURM shows
+# 0,1 here for a 2-GPU job, it renumbers GPUs per job and the export below
+# would point at cards this job wasn't given.
+echo "  SLURM gave CUDA_VISIBLE_DEVICES=${{CUDA_VISIBLE_DEVICES:-<unset>}}"
 export CUDA_VISIBLE_DEVICES={gpus}
 export PYTORCH_CUDA_ALLOC_CONF="max_split_size_mb:128,expandable_segments:True"
 export OMP_NUM_THREADS=8
@@ -376,7 +379,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Per-device batch size")
     g.add_argument("--effective-batch", type=int, default=16,
                    help="Videos per optimiser step. Gradient accumulation is derived "
-                        "from this so that changing --num-gpus does not change the "
+                        "from this so that changing --gpus does not change the "
                         "optimisation. This is the number to keep fixed across runs "
                         "you want to compare")
     g.add_argument("--grad-accum", type=int, default=None,
@@ -395,10 +398,11 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--video-max-token-num", type=int, default=128)
 
     g = p.add_argument_group("cluster")
-    g.add_argument("--num-gpus", type=int, default=2)
-    g.add_argument("--gpu-start", type=int, default=0)
+    g.add_argument("--gpus", default="0,1",
+                   help="Which GPUs, comma-separated, e.g. 3,6. Any set works; "
+                        "the count sets --gres and the gradient accumulation")
     g.add_argument("--time", default="12:00:00", help="SLURM time limit")
-    g.add_argument("--deepspeed", default="zero2", help="Used when --num-gpus > 1")
+    g.add_argument("--deepspeed", default="zero2", help="Used with more than one GPU")
     g.add_argument("--wandb-project", default="", help="Enables W&B logging when set")
     g.add_argument("--dry-run", action="store_true",
                    help="Build the run directory and print the SLURM script, don't submit")
@@ -408,8 +412,13 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     a = build_parser().parse_args()
 
-    if not 1 <= a.num_gpus <= 8:
-        raise SystemExit(f"--num-gpus must be 1-8, got {a.num_gpus}")
+    ids = [g.strip() for g in a.gpus.split(",") if g.strip()]
+    if not ids or not all(g.isdigit() for g in ids) or len(set(ids)) != len(ids):
+        raise SystemExit(f"--gpus expects distinct GPU numbers like 3,6, got {a.gpus!r}")
+    if not 1 <= len(ids) <= 8:
+        raise SystemExit(f"--gpus takes 1-8 GPUs, got {len(ids)}")
+    a.gpus = ",".join(ids)
+    a.num_gpus = len(ids)        # everything downstream uses the count
     batch_desc = resolve_batch(a)
     if not Path(a.model).exists():
         raise SystemExit(f"model not found: {a.model}")
