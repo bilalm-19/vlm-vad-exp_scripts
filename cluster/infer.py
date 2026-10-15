@@ -375,7 +375,7 @@ def main() -> int:
                          "it is the size actually used; lower is overridden")
     ap.add_argument("--max-tokens", type=int, default=8)
     ap.add_argument("--top-logprobs", type=int, default=20)
-    ap.add_argument("--limit", type=int, help="Stop after N videos (smoke test)")
+    ap.add_argument("--limit", type=int, help="Stop after N videos, half from each label (smoke test)")
     ap.add_argument("--fresh", action="store_true",
                     help="Overwrite the output instead of resuming it")
     a = ap.parse_args()
@@ -391,7 +391,7 @@ def main() -> int:
         print("ERROR: the two labels are identical", file=sys.stderr)
         return 1
  
-    # (path, label) in file order; anomaly first so a --limit smoke test sees both
+    # (path, label) in file order; --limit takes half from each label
     todo = []
     for split_file, label in ((a.anomaly, 1), (a.normal, 0)):
         if split_file is None:
@@ -424,7 +424,11 @@ def main() -> int:
     done = already_done(a.out)
     todo = [(p, l) for p, l in todo if p not in done]
     if a.limit:
-        todo = todo[:a.limit]
+        # half from each label, so a smoke test sees both classes
+        anom = [t for t in todo if t[1] == 1]
+        norm = [t for t in todo if t[1] == 0]
+        k = a.limit // 2
+        todo = anom[:a.limit - k] + norm[:k]
  
     print(f"  model     : {a.model}")
     if adapter:

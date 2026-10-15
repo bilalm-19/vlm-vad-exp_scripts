@@ -15,6 +15,8 @@ training - the objective is next-token cross-entropy on the assistant turn.
     one of those, so a bare run is the baseline the rest are compared to.
 
     --dry-run   build everything and print the sbatch script, don't submit
+    --run-now   build everything and start it on this machine straight away,
+                in the background, without SLURM (for when the queue is down)
 
 One run, one directory, so a checkpoint is never separated from what produced it:
 
@@ -406,12 +408,18 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--wandb-project", default="", help="Enables W&B logging when set")
     g.add_argument("--dry-run", action="store_true",
                    help="Build the run directory and print the SLURM script, don't submit")
+    g.add_argument("--run-now", action="store_true",
+                   help="Build the run directory and start slurm.sh directly on this "
+                        "machine in the background, without SLURM. Output goes to "
+                        "train.log in the run folder")
     return p
 
 
 def main() -> int:
     a = build_parser().parse_args()
-
+    if a.dry_run and a.run_now:
+        raise SystemExit("--dry-run and --run-now are opposites - pick one")
+    
     ids = [g.strip() for g in a.gpus.split(",") if g.strip()]
     if not ids or not all(g.isdigit() for g in ids) or len(set(ids)) != len(ids):
         raise SystemExit(f"--gpus expects distinct GPU numbers like 3,6, got {a.gpus!r}")
@@ -505,6 +513,21 @@ def main() -> int:
         print("\n=== DRY RUN - not submitted ===\n")
         print(slurm)
         print(f"=== Submit with:  sbatch {slurm_path} ===")
+        return 0
+
+    if a.run_now:
+        # what sbatch would do, minus the queue: run slurm.sh in the background,
+        # detached from this terminal (like nohup), output into train.log
+        with open(log_path, "w") as log:
+            proc = subprocess.Popen(["bash", str(slurm_path)], stdout=log,
+                                    stderr=subprocess.STDOUT,
+                                    stdin=subprocess.DEVNULL,
+                                    start_new_session=True)
+        print(f"\n  Started   : PID {proc.pid} on GPU(s) {a.gpus}, no SLURM")
+        print(f"  Log       -> {log_path}")
+        print(f"  Adapter   -> {run_dir}")
+        print(f"\n  Monitor:  tail -f {log_path}")
+        print(f"  Stop:     kill -- -{proc.pid}")
         return 0
 
     subprocess.run(["sbatch", str(slurm_path)], check=True)
