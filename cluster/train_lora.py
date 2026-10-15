@@ -360,7 +360,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Must be an env with ms-swift 4.5.x and transformers "
                         "5.2-5.16. qwen3_5 support landed in transformers 5.2, "
                         "so older envs cannot load the model at all")
-    g.add_argument("--adapter-base", type=Path, default=Path("/data3/bilal/lora_outputs"))
+    g.add_argument("--adapter-base", type=Path, default=Path("/data2/bilal/final_runs/lora"),
+                   help="Where run folders go. Kept apart from older experiments")
     g.add_argument("--tag", default="", help="Extra text in the run name")
 
     g = p.add_argument_group("LoRA")
