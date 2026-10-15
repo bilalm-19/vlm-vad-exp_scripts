@@ -22,6 +22,11 @@ Per file: AUROC under each read-out with its tied-pair count, the confusion
 matrix at pred's operating point, accuracy per UCF category, the log-odds
 spread, and infer.py's validity checks run over the whole file rather than
 one run.
+
+Ties: the model runs in bfloat16, so log-odds come in steps of 0.125 and
+videos the model scores almost alike can tie exactly. Rounding never reverses
+an order, only merges near-equal scores; AUROC counts a tie as half right.
+At most, ties move AUROC by half the tied fraction shown.
 """
 
 
