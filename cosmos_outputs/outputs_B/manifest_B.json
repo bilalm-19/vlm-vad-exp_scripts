@@ -1,0 +1,162 @@
+[
+  {
+    "name": "underground_roof_collapse",
+    "output_file": "outputs_B/underground_roof_collapse_B.mp4",
+    "seed": 0,
+    "status": "ok",
+    "generation_seconds": 81.5,
+    "error": null,
+    "params": {
+      "width": 832,
+      "height": 480,
+      "num_frames": 121,
+      "fps": 24.0,
+      "num_inference_steps": 20,
+      "guidance_scale": 5.0,
+      "flow_shift": 8.0,
+      "enable_sound": false
+    },
+    "env": {
+      "python": "3.12.3",
+      "platform": "Linux-5.4.0-186-generic-x86_64-with-glibc2.39",
+      "torch": "2.5.1+cu121",
+      "diffusers": "0.40.0.dev0",
+      "cuda": "12.1",
+      "gpu": "NVIDIA GeForce RTX 3090",
+      "model_id": "/data3/bilal/models/cosmos3-edge"
+    },
+    "prompt_chars": 8790,
+    "negative_prompt_chars": 17072,
+    "add_resolution_template": false,
+    "add_duration_template": false,
+    "peak_vram_gb": 12.34
+  },
+  {
+    "name": "openpit_fall_from_height",
+    "output_file": "outputs_B/openpit_fall_from_height_B.mp4",
+    "seed": 0,
+    "status": "ok",
+    "generation_seconds": 87.1,
+    "error": null,
+    "params": {
+      "width": 832,
+      "height": 480,
+      "num_frames": 121,
+      "fps": 24.0,
+      "num_inference_steps": 20,
+      "guidance_scale": 5.0,
+      "flow_shift": 8.0,
+      "enable_sound": false
+    },
+    "env": {
+      "python": "3.12.3",
+      "platform": "Linux-5.4.0-186-generic-x86_64-with-glibc2.39",
+      "torch": "2.5.1+cu121",
+      "diffusers": "0.40.0.dev0",
+      "cuda": "12.1",
+      "gpu": "NVIDIA GeForce RTX 3090",
+      "model_id": "/data3/bilal/models/cosmos3-edge"
+    },
+    "prompt_chars": 8596,
+    "negative_prompt_chars": 17186,
+    "add_resolution_template": false,
+    "add_duration_template": false,
+    "peak_vram_gb": 12.34
+  },
+  {
+    "name": "conveyor_belt_failure",
+    "output_file": "outputs_B/conveyor_belt_failure_B.mp4",
+    "seed": 0,
+    "status": "ok",
+    "generation_seconds": 91.1,
+    "error": null,
+    "params": {
+      "width": 832,
+      "height": 480,
+      "num_frames": 121,
+      "fps": 24.0,
+      "num_inference_steps": 20,
+      "guidance_scale": 5.0,
+      "flow_shift": 8.0,
+      "enable_sound": false
+    },
+    "env": {
+      "python": "3.12.3",
+      "platform": "Linux-5.4.0-186-generic-x86_64-with-glibc2.39",
+      "torch": "2.5.1+cu121",
+      "diffusers": "0.40.0.dev0",
+      "cuda": "12.1",
+      "gpu": "NVIDIA GeForce RTX 3090",
+      "model_id": "/data3/bilal/models/cosmos3-edge"
+    },
+    "prompt_chars": 7631,
+    "negative_prompt_chars": 16992,
+    "add_resolution_template": false,
+    "add_duration_template": false,
+    "peak_vram_gb": 12.34
+  },
+  {
+    "name": "haul_truck_pedestrian_near_miss",
+    "output_file": "outputs_B/haul_truck_pedestrian_near_miss_B.mp4",
+    "seed": 0,
+    "status": "ok",
+    "generation_seconds": 89.9,
+    "error": null,
+    "params": {
+      "width": 832,
+      "height": 480,
+      "num_frames": 121,
+      "fps": 24.0,
+      "num_inference_steps": 20,
+      "guidance_scale": 5.0,
+      "flow_shift": 8.0,
+      "enable_sound": false
+    },
+    "env": {
+      "python": "3.12.3",
+      "platform": "Linux-5.4.0-186-generic-x86_64-with-glibc2.39",
+      "torch": "2.5.1+cu121",
+      "diffusers": "0.40.0.dev0",
+      "cuda": "12.1",
+      "gpu": "NVIDIA GeForce RTX 3090",
+      "model_id": "/data3/bilal/models/cosmos3-edge"
+    },
+    "prompt_chars": 9333,
+    "negative_prompt_chars": 17066,
+    "add_resolution_template": false,
+    "add_duration_template": false,
+    "peak_vram_gb": 12.34
+  },
+  {
+    "name": "generator_electrical_fire",
+    "output_file": "outputs_B/generator_electrical_fire_B.mp4",
+    "seed": 0,
+    "status": "ok",
+    "generation_seconds": 87.4,
+    "error": null,
+    "params": {
+      "width": 832,
+      "height": 480,
+      "num_frames": 121,
+      "fps": 24.0,
+      "num_inference_steps": 20,
+      "guidance_scale": 5.0,
+      "flow_shift": 8.0,
+      "enable_sound": false
+    },
+    "env": {
+      "python": "3.12.3",
+      "platform": "Linux-5.4.0-186-generic-x86_64-with-glibc2.39",
+      "torch": "2.5.1+cu121",
+      "diffusers": "0.40.0.dev0",
+      "cuda": "12.1",
+      "gpu": "NVIDIA GeForce RTX 3090",
+      "model_id": "/data3/bilal/models/cosmos3-edge"
+    },
+    "prompt_chars": 8550,
+    "negative_prompt_chars": 17052,
+    "add_resolution_template": false,
+    "add_duration_template": false,
+    "peak_vram_gb": 12.34
+  }
+]

@@ -1,0 +1,162 @@
+[
+  {
+    "name": "underground_roof_collapse",
+    "output_file": "/data3/bilal/runs/scripts/synth_gen/json_formatted/outputs/underground_roof_collapse.mp4",
+    "seed": 0,
+    "status": "ok",
+    "generation_seconds": 87.1,
+    "error": null,
+    "params": {
+      "width": 832,
+      "height": 480,
+      "num_frames": 121,
+      "fps": 24.0,
+      "num_inference_steps": 20,
+      "guidance_scale": 5.0,
+      "flow_shift": 8.0,
+      "enable_sound": false
+    },
+    "env": {
+      "python": "3.12.3",
+      "platform": "Linux-5.4.0-186-generic-x86_64-with-glibc2.39",
+      "torch": "2.5.1+cu121",
+      "diffusers": "0.40.0.dev0",
+      "cuda": "12.1",
+      "gpu": "NVIDIA GeForce RTX 3090",
+      "model_id": "/data3/bilal/models/cosmos3-edge"
+    },
+    "prompt_chars": 8790,
+    "negative_prompt_chars": 15485,
+    "add_resolution_template": false,
+    "add_duration_template": false,
+    "peak_vram_gb": 12.34
+  },
+  {
+    "name": "openpit_fall_from_height",
+    "output_file": "/data3/bilal/runs/scripts/synth_gen/json_formatted/outputs/openpit_fall_from_height.mp4",
+    "seed": 0,
+    "status": "ok",
+    "generation_seconds": 86.7,
+    "error": null,
+    "params": {
+      "width": 832,
+      "height": 480,
+      "num_frames": 121,
+      "fps": 24.0,
+      "num_inference_steps": 20,
+      "guidance_scale": 5.0,
+      "flow_shift": 8.0,
+      "enable_sound": false
+    },
+    "env": {
+      "python": "3.12.3",
+      "platform": "Linux-5.4.0-186-generic-x86_64-with-glibc2.39",
+      "torch": "2.5.1+cu121",
+      "diffusers": "0.40.0.dev0",
+      "cuda": "12.1",
+      "gpu": "NVIDIA GeForce RTX 3090",
+      "model_id": "/data3/bilal/models/cosmos3-edge"
+    },
+    "prompt_chars": 8596,
+    "negative_prompt_chars": 15599,
+    "add_resolution_template": false,
+    "add_duration_template": false,
+    "peak_vram_gb": 12.34
+  },
+  {
+    "name": "conveyor_belt_failure",
+    "output_file": "/data3/bilal/runs/scripts/synth_gen/json_formatted/outputs/conveyor_belt_failure.mp4",
+    "seed": 0,
+    "status": "ok",
+    "generation_seconds": 89.9,
+    "error": null,
+    "params": {
+      "width": 832,
+      "height": 480,
+      "num_frames": 121,
+      "fps": 24.0,
+      "num_inference_steps": 20,
+      "guidance_scale": 5.0,
+      "flow_shift": 8.0,
+      "enable_sound": false
+    },
+    "env": {
+      "python": "3.12.3",
+      "platform": "Linux-5.4.0-186-generic-x86_64-with-glibc2.39",
+      "torch": "2.5.1+cu121",
+      "diffusers": "0.40.0.dev0",
+      "cuda": "12.1",
+      "gpu": "NVIDIA GeForce RTX 3090",
+      "model_id": "/data3/bilal/models/cosmos3-edge"
+    },
+    "prompt_chars": 7631,
+    "negative_prompt_chars": 15405,
+    "add_resolution_template": false,
+    "add_duration_template": false,
+    "peak_vram_gb": 12.34
+  },
+  {
+    "name": "haul_truck_pedestrian_near_miss",
+    "output_file": "/data3/bilal/runs/scripts/synth_gen/json_formatted/outputs/haul_truck_pedestrian_near_miss.mp4",
+    "seed": 0,
+    "status": "ok",
+    "generation_seconds": 88.7,
+    "error": null,
+    "params": {
+      "width": 832,
+      "height": 480,
+      "num_frames": 121,
+      "fps": 24.0,
+      "num_inference_steps": 20,
+      "guidance_scale": 5.0,
+      "flow_shift": 8.0,
+      "enable_sound": false
+    },
+    "env": {
+      "python": "3.12.3",
+      "platform": "Linux-5.4.0-186-generic-x86_64-with-glibc2.39",
+      "torch": "2.5.1+cu121",
+      "diffusers": "0.40.0.dev0",
+      "cuda": "12.1",
+      "gpu": "NVIDIA GeForce RTX 3090",
+      "model_id": "/data3/bilal/models/cosmos3-edge"
+    },
+    "prompt_chars": 9333,
+    "negative_prompt_chars": 15479,
+    "add_resolution_template": false,
+    "add_duration_template": false,
+    "peak_vram_gb": 12.34
+  },
+  {
+    "name": "generator_electrical_fire",
+    "output_file": "/data3/bilal/runs/scripts/synth_gen/json_formatted/outputs/generator_electrical_fire.mp4",
+    "seed": 0,
+    "status": "ok",
+    "generation_seconds": 86.2,
+    "error": null,
+    "params": {
+      "width": 832,
+      "height": 480,
+      "num_frames": 121,
+      "fps": 24.0,
+      "num_inference_steps": 20,
+      "guidance_scale": 5.0,
+      "flow_shift": 8.0,
+      "enable_sound": false
+    },
+    "env": {
+      "python": "3.12.3",
+      "platform": "Linux-5.4.0-186-generic-x86_64-with-glibc2.39",
+      "torch": "2.5.1+cu121",
+      "diffusers": "0.40.0.dev0",
+      "cuda": "12.1",
+      "gpu": "NVIDIA GeForce RTX 3090",
+      "model_id": "/data3/bilal/models/cosmos3-edge"
+    },
+    "prompt_chars": 8550,
+    "negative_prompt_chars": 15465,
+    "add_resolution_template": false,
+    "add_duration_template": false,
+    "peak_vram_gb": 12.34
+  }
+]

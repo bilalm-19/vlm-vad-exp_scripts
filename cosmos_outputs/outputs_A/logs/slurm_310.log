@@ -1,0 +1,2 @@
+/var/spool/slurmd/job00310/slurm_script: line 21: conda: command not found
+/var/spool/slurmd/job00310/slurm_script: line 21: /etc/profile.d/conda.sh: No such file or directory

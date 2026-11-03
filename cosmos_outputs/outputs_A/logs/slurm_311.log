@@ -1,0 +1,4 @@
+ERROR: could not locate conda, and no active env was inherited.
+Fix: run  conda info --base  in your shell, then either add that path
+to the fallback list in this script, or submit with:
+  CONDA_EXE=/path/to/conda/bin/conda sbatch run_json_gen.sbatch

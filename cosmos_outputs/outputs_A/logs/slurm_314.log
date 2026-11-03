@@ -1,0 +1,64 @@
+activation: direct prefix (no conda base found -- this is fine)
+env       : /data3/bilal/envs/cosmos
+python    : /data3/bilal/envs/cosmos/bin/python (Python 3.12.3)
+host      : anu15-ESC8000A-E11
+job       : 314
+started   : 2026-08-28T02:54:14+10:00
+gpus      : 1
+0, NVIDIA GeForce RTX 3090, 24576 MiB
+1, NVIDIA GeForce RTX 3090, 24576 MiB
+2, NVIDIA GeForce RTX 3090, 24576 MiB
+3, NVIDIA GeForce RTX 3090, 24576 MiB
+4, NVIDIA GeForce RTX 3090, 24576 MiB
+5, NVIDIA GeForce RTX 3090, 24576 MiB
+6, NVIDIA GeForce RTX 3090, 24576 MiB
+7, NVIDIA GeForce RTX 3090, 24576 MiB
+torch 2.5.1+cu121 / diffusers 0.40.0.dev0 / cuda avail=True
+
+[+] Loaded 5 payload(s) from prompts_C_rewrite
+[+] Validating payloads
+    - underground_roof_collapse            832x480 121f @ 24.0fps  steps=20 g=5.0 shift=8.0  prompt=9593ch neg=17072ch
+    - openpit_fall_from_height             832x480 121f @ 24.0fps  steps=20 g=5.0 shift=8.0  prompt=10459ch neg=17186ch
+    - conveyor_belt_failure                832x480 121f @ 24.0fps  steps=20 g=5.0 shift=8.0  prompt=7631ch neg=16992ch
+    - haul_truck_pedestrian_near_miss      832x480 121f @ 24.0fps  steps=20 g=5.0 shift=8.0  prompt=10181ch neg=17066ch
+    - generator_electrical_fire            832x480 121f @ 24.0fps  steps=20 g=5.0 shift=8.0  prompt=8550ch neg=17052ch
+[+] 5 clip(s) to generate (5 scene(s) x 1 seed(s))
+[+] Loading /data3/bilal/models/cosmos3-edge
+Loading pipeline components...:   0%|          | 0/4 [00:00<?, ?it/s]The config attributes {'clip_output': False} were passed to AutoencoderKLWan, but are not expected and will be ignored. Please verify your config.json configuration file.
+Loading pipeline components...:  25%|██▌       | 1/4 [00:00<00:01,  2.54it/s]The config attributes {'backbone_type': 'cosmos3_edge_nemotron_dense', 'temporal_compression_factor': 4} were passed to Cosmos3OmniTransformer, but are not expected and will be ignored. Please verify your config.json configuration file.
+
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s][ALoading checkpoint shards:   0%|          | 0/2 [00:01<?, ?it/s]
+Loading pipeline components...:  50%|█████     | 2/4 [00:01<00:01,  1.12it/s]
+Traceback (most recent call last):
+  File "/data3/bilal/runs/scripts/synth_gen/json_formatted/cosmos_json_gen.py", line 409, in <module>
+    main()
+  File "/data3/bilal/runs/scripts/synth_gen/json_formatted/cosmos_json_gen.py", line 289, in main
+    pipe = Cosmos3OmniPipeline.from_pretrained(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data3/bilal/envs/cosmos/lib/python3.12/site-packages/huggingface_hub/utils/_validators.py", line 88, in _inner_fn
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/data3/bilal/envs/cosmos/lib/python3.12/site-packages/diffusers/pipelines/pipeline_utils.py", line 1064, in from_pretrained
+    loaded_sub_model = load_sub_model(
+                       ^^^^^^^^^^^^^^^
+  File "/data3/bilal/envs/cosmos/lib/python3.12/site-packages/diffusers/pipelines/pipeline_loading_utils.py", line 904, in load_sub_model
+    loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data3/bilal/envs/cosmos/lib/python3.12/site-packages/huggingface_hub/utils/_validators.py", line 88, in _inner_fn
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/data3/bilal/envs/cosmos/lib/python3.12/site-packages/diffusers/models/modeling_utils.py", line 1404, in from_pretrained
+    ) = cls._load_pretrained_model(
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data3/bilal/envs/cosmos/lib/python3.12/site-packages/diffusers/models/modeling_utils.py", line 1826, in _load_pretrained_model
+    offload_index, state_dict_index, _mismatched_keys, _error_msgs = load_fn(shard_file)
+                                                                     ^^^^^^^^^^^^^^^^^^^
+  File "/data3/bilal/envs/cosmos/lib/python3.12/site-packages/diffusers/models/model_loading_utils.py", line 371, in _load_shard_file
+    offload_index, state_dict_index = load_model_dict_into_meta(
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data3/bilal/envs/cosmos/lib/python3.12/site-packages/diffusers/models/model_loading_utils.py", line 307, in load_model_dict_into_meta
+    set_module_tensor_to_device(model, param_name, param_device, value=param, **set_module_kwargs)
+  File "/data3/bilal/envs/cosmos/lib/python3.12/site-packages/accelerate/utils/modeling.py", line 353, in set_module_tensor_to_device
+    new_value = value.to(device, non_blocking=non_blocking)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 36.00 MiB. GPU 0 has a total capacity of 23.68 GiB of which 23.94 MiB is free. Process 250720 has 18.08 GiB memory in use. Including non-PyTorch memory, this process has 5.56 GiB memory in use. Of the allocated memory 5.30 GiB is allocated by PyTorch, and 13.14 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
